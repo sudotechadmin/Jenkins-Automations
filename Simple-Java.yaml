@@ -1,0 +1,48 @@
+## Declarative Pipeline Example
+#A simple Declarative pipeline using Maven for a Java project:-
+
+pipeline {
+    agent any
+    stages {
+        stage('Build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh 'scp target/*.jar user@server:/opt/app/'
+            }
+        }
+    }
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed.'
+        }
+    }
+}
+###################################END###################################
+
+
+## Scripted Pipeline Example
+## A basic scripted pipeline layout, suitable for complex Groovy logic:-
+node {
+    stage('Build') {
+        sh 'make'
+    }
+    stage('Test') {
+        sh 'make check'
+        junit 'reports/**/*.xml'
+    }
+    stage('Deploy') {
+        sh 'make publish'
+    }
+}
