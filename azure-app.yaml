@@ -1,0 +1,61 @@
+# Here is an example of a Jenkins pipeline for Azure cloud deployment that integrates build, testing, packaging, and deploys to Azure App Service using Azure CLI inside the pipeline.
+# Key Points:
+# Uses Azure service principal credentials securely stored in Jenkins.
+
+# Builds, tests, packages Node.js app into zip archive.
+
+# Uses Azure CLI (az) commands in pipeline to deploy app to Azure App Service.
+
+# Provides success and failure notifications in pipeline post actions.
+
+# This approach can be adapted to other Azure services or app types, integrating Azure CLI or plugins inside Jenkins pipelines for automated cloud deployment.
+
+pipeline {
+  agent any
+  environment {
+    AZURE_CREDENTIALS = credentials('azure-service-principal')
+    RESOURCE_GROUP = 'myResourceGroup'
+    APP_SERVICE_NAME = 'myAzureAppService'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/your-org/your-app.git'
+      }
+    }
+    stage('Build') {
+      steps {
+        sh 'npm install'
+        sh 'npm run build'
+      }
+    }
+    stage('Test') {
+      steps {
+        sh 'npm test'
+      }
+    }
+    stage('Package') {
+      steps {
+        sh 'zip -r app.zip .'
+      }
+    }
+    stage('Deploy to Azure') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: "${AZURE_CREDENTIALS}", usernameVariable: 'AZURE_APP_ID', passwordVariable: 'AZURE_PASSWORD')]) {
+          sh '''
+          az login --service-principal -u $AZURE_APP_ID -p $AZURE_PASSWORD --tenant your-tenant-id
+          az webapp deployment source config-zip --resource-group ${RESOURCE_GROUP} --name ${APP_SERVICE_NAME} --src app.zip
+          '''
+        }
+      }
+    }
+  }
+  post {
+    success {
+      echo 'Deployment to Azure App Service successful!'
+    }
+    failure {
+      echo 'Deployment failed.'
+    }
+  }
+}
