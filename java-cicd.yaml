@@ -1,0 +1,41 @@
+## CI/CD Pipeline for a Java Application
+## A full CI/CD pipeline utilizing source code checkout, Maven build, unit tests, code quality checks with SonarQube, artifact upload to Nexus, and deployment:-
+pipeline {
+    agent any
+    environment {
+        MAVEN_HOME = '/usr/share/maven'
+        SONARQUBE_SERVER = 'SonarQube'
+        NEXUS_REPO = 'http://nexus.example.com/repository/maven-releases/'
+    }
+    stages {
+        stage('Checkout Code') {
+            steps { git 'https://github.com/your-repo/java-app.git' }
+        }
+        stage('Build with Maven') {
+            steps { sh 'mvn clean package' }
+        }
+        stage('Run Unit Tests') {
+            steps { sh 'mvn test' }
+        }
+        stage('Code Analysis with SonarQube') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+        stage('Publish to Nexus') {
+            steps { sh 'mvn deploy -DaltDeploymentRepository=nexus-releases::default::${NEXUS_REPO}' }
+        }
+        stage('Deploy to Test Server') {
+            steps {
+                sh 'scp target/*.jar user@your-server:/opt/app/'
+                sh 'ssh user@your-server "systemctl restart java-app"'
+            }
+        }
+    }
+    post {
+        success { echo 'Build and deployment successful!' }
+        failure { echo 'Build failed!' }
+    }
+}
