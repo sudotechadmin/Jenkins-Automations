@@ -1,4 +1,17 @@
 #A Jenkins pipeline for a Node.js application automates build, test, and deployment steps, and can use Docker or native Node.js tools. 
+# Common Features
+# NodeJS tool integration using Jenkins plugin.
+
+# NPM install, lint, and test for quality checks and build.
+
+# Docker build and push for containerized delivery.
+
+# Deployment using shell or third-party tools.
+
+# Post actions for reporting pipeline status.
+
+# This approach ensures consistent, automated, and repeatable CI/CD for Node.js apps, and can be extended further for production needs.
+
 # Below is a typical Declarative Jenkinsfile example, including install, lint, unit tests, and delivery.
 
 pipeline {
