@@ -1,0 +1,118 @@
+# Here is an example of an advanced Jenkins pipeline for a Node.js application that includes several advanced features such as:
+
+# Parallel stages for running tests faster
+
+# Multi-environment deployment (dev, staging, prod)
+
+# Manual approval for production deployment
+
+# Notifications for pipeline status
+
+# Docker image build and push
+
+# Highlights of this pipeline:
+# Uses parallel stages for unit, integration tests, and linting, speeding up validation.
+
+# Supports multi-environment deployment with promotion gating via manual approval for production.
+
+# Builds and pushes a Docker image tagged with the Jenkins build number.
+
+# Slack notifications sent for success and failure.
+
+# Workspace cleanup in every run.
+
+pipeline {
+    agent any
+    tools {
+        nodejs 'node'  // Configure your NodeJS installation in Jenkins global tools
+    }
+    environment {
+        NODE_ENV = 'production'
+        SLACK_WEBHOOK = credentials('slack-webhook')
+        DOCKER_CREDENTIALS = credentials('dockerhub-creds')
+    }
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'staging', 'prod'], description: 'Choose deployment environment')
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/your-org/nodejs-app.git'
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        stage('Parallel Tests') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh 'npm run test:unit'
+                    }
+                }
+                stage('Integration Tests') {
+                    steps {
+                        sh 'npm run test:integration'
+                    }
+                }
+                stage('Lint Checks') {
+                    steps {
+                        sh 'npm run lint'
+                    }
+                }
+            }
+        }
+        stage('Build') {
+            steps {
+                sh 'npm run build'
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    docker.withRegistry('', "${DOCKER_CREDENTIALS}") {
+                        def appImage = docker.build("nodejs-app:${env.BUILD_NUMBER}")
+                        appImage.push()
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            when {
+                expression { params.DEPLOY_ENV != 'prod' }
+            }
+            steps {
+                sh "./deploy/deploy-${params.DEPLOY_ENV}.sh"
+            }
+        }
+        stage('Production Approval') {
+            when {
+                expression { params.DEPLOY_ENV == 'prod' }
+            }
+            steps {
+                input message: 'Approve deployment to production?'
+            }
+        }
+        stage('Deploy to Production') {
+            when {
+                expression { params.DEPLOY_ENV == 'prod' }
+            }
+            steps {
+                sh './deploy/deploy-prod.sh'
+            }
+        }
+    }
+    post {
+        success {
+            slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "✅ Build #${env.BUILD_NUMBER} deployed successfully to ${params.DEPLOY_ENV}")
+        }
+        failure {
+            slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "❌ Build #${env.BUILD_NUMBER} failed on deployment to ${params.DEPLOY_ENV}")
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
