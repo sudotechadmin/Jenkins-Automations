@@ -1,0 +1,84 @@
+# Here is a practical example of an advanced Jenkins Declarative Pipeline for deploying a Python application that includes build, test, packaging,
+# deployment stages, along with notifications and artifact archiving.
+# Key features in this pipeline:
+# Creates and activates a Python virtual environment to isolate dependencies.
+
+# Runs linting with flake8 and unit tests with pytest, publishing test results.
+
+# Packages the Python app as source distribution and wheel, archives artifacts.
+
+# Builds and pushes a Docker image for container deployment.
+
+# Executes a deployment script with the build number as parameter.
+
+# Sends Slack notifications on success or failure.
+
+# Cleans the workspace after each run.
+
+pipeline {
+    agent any
+    environment {
+        VENV_DIR = './venv'
+        SLACK_WEBHOOK = credentials('slack-webhook')
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/your-org/python-app.git'
+            }
+        }
+        stage('Setup Virtualenv') {
+            steps {
+                sh 'python3 -m venv ${VENV_DIR}'
+                sh '. ${VENV_DIR}/bin/activate && pip install -r requirements.txt'
+            }
+        }
+        stage('Lint') {
+            steps {
+                sh '. ${VENV_DIR}/bin/activate && flake8 .'
+            }
+        }
+        stage('Unit Tests') {
+            steps {
+                sh '. ${VENV_DIR}/bin/activate && pytest --junitxml=results.xml'
+            }
+            post {
+                always {
+                    junit 'results.xml'
+                }
+            }
+        }
+        stage('Package') {
+            steps {
+                sh '. ${VENV_DIR}/bin/activate && python setup.py sdist bdist_wheel'
+                archiveArtifacts artifacts: 'dist/*.tar.gz, dist/*.whl', fingerprint: true
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    docker.withRegistry('', 'dockerhub-creds') {
+                        def img = docker.build("python-app:${env.BUILD_NUMBER}")
+                        img.push()
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh './deploy/deploy.sh ${env.BUILD_NUMBER}'
+            }
+        }
+    }
+    post {
+        success {
+            slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "✅ Build #${env.BUILD_NUMBER} succeeded!")
+        }
+        failure {
+            slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "❌ Build #${env.BUILD_NUMBER} failed.")
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
