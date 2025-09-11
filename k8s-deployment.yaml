@@ -1,0 +1,78 @@
+# Here is an example of an advanced Jenkins pipeline for deploying applications to a Kubernetes cluster with stages for building, pushing Docker images, deploying via kubectl.
+#
+# Key Points:
+# Runs Jenkins agents inside Kubernetes pods (using Kubernetes plugin) with Docker and Kubectl containers.
+
+# Builds and pushes Docker image to private registry.
+
+# Deploys the new image to Kubernetes deployment with rollout status check.
+
+# Uses Jenkins credentials for secure access to Kubeconfig.
+
+# Suitable for containerized apps and microservices running on Kubernetes clusters.
+
+# This pipeline can be extended with stages for testing, manual approvals, multi-environment deployments, and Slack notifications.
+pipeline {
+  agent {
+    kubernetes {
+      label 'k8s-agent'
+      yaml """
+      apiVersion: v1
+      kind: Pod
+      spec:
+        containers:
+        - name: docker
+          image: docker:stable-dind
+          securityContext:
+            privileged: true
+        - name: kubectl
+          image: bitnami/kubectl:latest
+          command:
+            - cat
+          tty: true
+      """
+    }
+  }
+  environment {
+    DOCKER_REGISTRY = 'your-docker-registry.com'
+    IMAGE_NAME = 'your-app'
+    KUBECONFIG_CREDENTIALS_ID = 'kubeconfig'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/your-org/your-repo.git'
+      }
+    }
+    stage('Build Docker Image') {
+      steps {
+        container('docker') {
+          sh '''
+            docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} .
+            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER}
+          '''
+        }
+      }
+    }
+    stage('Deploy to Kubernetes') {
+      steps {
+        container('kubectl') {
+          withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS_ID}", variable: 'KUBECONFIG')]) {
+            sh '''
+              kubectl set image deployment/${IMAGE_NAME} ${IMAGE_NAME}=${DOCKER_REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} --record
+              kubectl rollout status deployment/${IMAGE_NAME}
+            '''
+          }
+        }
+      }
+    }
+  }
+  post {
+    success {
+      echo 'Deployment successful!'
+    }
+    failure {
+      echo 'Deployment failed.'
+    }
+  }
+}
