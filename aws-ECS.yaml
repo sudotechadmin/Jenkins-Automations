@@ -1,0 +1,63 @@
+# Here is an example of a Jenkins pipeline for AWS cloud deployment that integrates build, Docker containerization,
+# deployment to AWS ECS (Elastic Container Service) with notifications and approvals.
+# Highlights:
+# Checkout code from repo.
+
+# Build application (example uses Maven; replace with Node.js, Python, etc. as needed).
+
+# Build Docker image and push to Amazon ECR.
+
+#Deploy updated image to Amazon ECS service.
+
+#Slack notification on deployment success or failure.
+
+pipeline {
+  agent any
+  environment {
+    AWS_REGION = 'us-east-1'
+    ECR_REPO = 'your-aws-ecr-repo'
+    AWS_CREDENTIALS = credentials('aws-creds-id')
+    SLACK_WEBHOOK = credentials('slack-webhook')
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/your-org/aws-ecs-app.git'
+      }
+    }
+    stage('Build & Test') {
+      steps {
+        sh 'mvn clean package' // Change accordingly (node, python, etc.)
+      }
+    }
+    stage('Docker Build & Push') {
+      steps {
+        script {
+          docker.withRegistry("https://${AWS_REGION}.amazonaws.com", 'aws-ecr-creds') {
+            def img = docker.build("${ECR_REPO}:${env.BUILD_NUMBER}")
+            img.push()
+          }
+        }
+      }
+    }
+    stage('Deploy to ECS') {
+      steps {
+        withAWS(credentials: 'aws-creds-id', region: "${AWS_REGION}") {
+          sh '''
+            ecs deploy --cluster your-cluster-name --service your-service-name --image ${ECR_REPO}:${BUILD_NUMBER}
+          '''
+        }
+      }
+    }
+    stage('Notify') {
+      steps {
+        slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "Deployment of build #${env.BUILD_NUMBER} to AWS ECS successful.")
+      }
+    }
+  }
+  post {
+    failure {
+      slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "Deployment failed for build #${env.BUILD_NUMBER}")
+    }
+  }
+}
