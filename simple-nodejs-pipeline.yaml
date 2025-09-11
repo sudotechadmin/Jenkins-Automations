@@ -1,0 +1,66 @@
+#A Jenkins pipeline for a Node.js application automates build, test, and deployment steps, and can use Docker or native Node.js tools. 
+# Below is a typical Declarative Jenkinsfile example, including install, lint, unit tests, and delivery.
+
+pipeline {
+    agent any
+    tools { nodejs "node" } // Make sure NodeJS plugin is configured
+    environment {
+        NODE_ENV = 'production'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: 'https://github.com/your-repo/sample-node-app.git'
+            }
+        }
+        stage('Install') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        stage('Lint') {
+            steps {
+                sh 'npm run lint'
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+        stage('Build') {
+            steps {
+                sh 'npm run build'
+            }
+        }
+        stage('Package Docker Image') {
+            steps {
+                script {
+                    docker.build("your-nodejs-app:${env.BUILD_NUMBER}")
+                }
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
+                        docker.image("your-nodejs-app:${env.BUILD_NUMBER}").push()
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh './deploy/deploy.sh'
+            }
+        }
+    }
+    post {
+        success {
+            echo "Node.js pipeline completed successfully."
+        }
+        failure {
+            echo "Node.js pipeline failed."
+        }
+    }
+}
