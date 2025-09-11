@@ -1,0 +1,100 @@
+# An advanced infrastructure pipeline in Jenkins features not just provisioning and destroying resources, but includes multi-environment deployments, 
+# linting, security checks, parameterization, approvals, and GitOps patterns for infrastructure as code. 
+# This ensures robust, auditable, and secure infrastructure life cycles.
+
+# Advanced Features Included
+# Multi-env deployments: Select target environment (dev, qa, prod) at runtime.
+
+# Terraform lint, validate, compliance and security scans: Ensures code and infra security before changes.
+
+# Parameterized apply/destroy: Controlled, auditable infra mutations with gated deployment for production changes.
+
+# Manual approval in production: Human sign-off required for high-risk operations.
+
+# GitOps-style folder structure and branch targeting: Policy-driven CD for IaC.
+
+# Automated Slack notifications: Keeps teams informed of infra changes and outcomes.
+
+pipeline {
+  agent { label 'linux' }
+  parameters {
+    choice(name: 'ENVIRONMENT', choices: ['dev', 'qa', 'prod'], description: 'Target environment')
+    choice(name: 'ACTION', choices: ['plan', 'apply', 'destroy'], description: 'Terraform Action')
+    booleanParam(name: 'SKIP_SECURITY', defaultValue: false, description: 'Skip security scanning')
+  }
+  environment {
+    AWS_CREDS      = credentials("aws-iam-${params.ENVIRONMENT}")
+    TF_VAR_env     = "${params.ENVIRONMENT}"
+    TF_WORKDIR     = "infra/${params.ENVIRONMENT}"
+    SLACK_WEBHOOK  = credentials('slack-webhook')
+  }
+  stages {
+    stage('Checkout IaC') {
+      steps {
+        git branch: 'main', url: 'https://github.com/org/infra-repo.git'
+      }
+    }
+    stage('Prepare Terraform Backend') {
+      steps {
+        dir("${TF_WORKDIR}") {
+          sh 'terraform init -backend-config="env=${TF_VAR_env}"'
+        }
+      }
+    }
+    stage('Lint & Validate') {
+      steps {
+        dir("${TF_WORKDIR}") {
+          sh 'terraform fmt -check'
+          sh 'terraform validate'
+        }
+      }
+    }
+    stage('Security Scan') {
+      when { expression { !params.SKIP_SECURITY } }
+      steps {
+        dir("${TF_WORKDIR}") {
+          sh 'terraform-compliance -v -p plan.out -f policy/'
+          sh 'trivy fs --exit-code 1 --severity HIGH,CRITICAL .'
+        }
+      }
+    }
+    stage('Terraform Plan') {
+      steps {
+        dir("${TF_WORKDIR}") {
+          sh "terraform plan -out=tfplan -input=false"
+          archiveArtifacts artifacts: 'tfplan', onlyIfSuccessful: true
+        }
+      }
+    }
+    stage('Manual Approval') {
+      when { allOf { expression { params.ACTION == "apply" || params.ACTION == "destroy" } expression { params.ENVIRONMENT == "prod" } } }
+      steps {
+        input message: "Approve ${params.ACTION} to PRODUCTION?"
+      }
+    }
+    stage('Terraform Apply/Destroy') {
+      when { anyOf { expression { params.ACTION == "apply" } expression { params.ACTION == "destroy" } } }
+      steps {
+        dir("${TF_WORKDIR}") {
+          sh "terraform ${params.ACTION == 'apply' ? 'apply tfplan' : 'destroy -auto-approve'}"
+        }
+      }
+    }
+  }
+  post {
+    always {
+      echo "Pipeline finished for env: ${params.ENVIRONMENT}"
+      cleanWs()
+    }
+    success {
+      script {
+        slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "✅ ${ENVIRONMENT}-${ACTION} successful!")
+      }
+    }
+    failure {
+      script {
+        slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "❌ ${ENVIRONMENT}-${ACTION} failed!")
+      }
+    }
+  }
+}
