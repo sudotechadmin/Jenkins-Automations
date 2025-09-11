@@ -1,0 +1,115 @@
+# A complex Jenkins pipeline with advanced features typically includes parallel execution, matrix builds, manual approvals, 
+# environment management, post-build notifications, and integration with tools like Docker, SonarQube, and cloud platforms. 
+# Notable Features Included
+# Matrix Build: Runs build and test on multiple OS/JDK combinations in parallel.
+
+# Parallel Stages: Docker image build and notifications run simultaneously.
+
+# Manual Approval: Requires a manual action before production deployment.
+
+# Environment Segregation: Secure Credential Management and Environment Variables.
+
+# Automated Notifications: Slack notifications on build progress, success, and failure.
+
+# Post-Build Actions: Cleanup and Notifications Using Multiple Post Conditions.
+
+# Tool Integrations: SonarQube for code quality, Docker for container images, and Kubernetes for production deployment.
+
+# This pattern is well-suited for production-grade CI/CD pipelines with compliance, audit, and multi-environment requirements.
+
+# Here is an example demonstrating many of these features:-
+
+pipeline {
+  agent any
+  environment {
+    DOCKER_CREDENTIALS = credentials('dockerhub-creds')
+    KUBECONFIG_CREDENTIALS = credentials('kubeconfig')
+    SONARQUBE_SERVER = 'SonarQube'
+    SLACK_WEBHOOK = credentials('slack-webhook')
+  }
+  options {
+    timeout(time: 60, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/org/complex-app.git'
+      }
+    }
+    stage('Build & Test Matrix') {
+      matrix {
+        axes {
+          axis { name: 'OS'; values: 'ubuntu-latest', 'windows-latest' }
+          axis { name: 'JDK'; values: '11', '17' }
+        }
+        stages {
+          stage('Build') {
+            steps {
+              sh 'mvn clean package'
+            }
+          }
+          stage('Unit Tests') {
+            steps {
+              sh 'mvn test'
+            }
+          }
+        }
+      }
+    }
+    stage('Static Code Analysis') {
+      steps {
+        withSonarQubeEnv("${SONARQUBE_SERVER}") {
+          sh 'mvn sonar:sonar'
+        }
+      }
+    }
+    stage('Docker Build and Push') {
+      parallel {
+        stage('Build Docker Image') {
+          steps {
+            script {
+              docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
+                sh 'docker build -t myapp:${BUILD_NUMBER} .'
+                sh 'docker push myapp:${BUILD_NUMBER}'
+              }
+            }
+          }
+        }
+        stage('Notify Team') {
+          steps {
+            script {
+              slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "Build #${BUILD_NUMBER} is in progress")
+            }
+          }
+        }
+      }
+    }
+    stage('Approval') {
+      steps {
+        timeout(time: 15, unit: "MINUTES") {
+          input message: 'Approve production deployment?'
+        }
+      }
+    }
+    stage('Deploy to Kubernetes') {
+      steps {
+        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+          sh 'kubectl apply -f k8s/deployment.yaml'
+        }
+      }
+    }
+  }
+  post {
+    always {
+      echo "Cleaning workspace"
+      cleanWs()
+    }
+    success {
+      slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "Build #${BUILD_NUMBER} succeeded")
+    }
+    failure {
+      slackSend(webhookUrl: "${SLACK_WEBHOOK}", message: "Build #${BUILD_NUMBER} failed")
+    }
+  }
+}
