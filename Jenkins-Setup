@@ -50,7 +50,7 @@ Create your first admin user?
 This is covered in the install docs and Docker notes.
 https://www.jenkins.io/doc/book/installing/
 
-4) # Run Jenkins with Docker socket and bind Docker CLI (host path may vary) allows Jenkins to call docker binary.
+4)OPTIONAL # Run Jenkins with Docker socket and bind Docker CLI (host path may vary) allows Jenkins to call docker binary.
 
 # create persistent volume if not created
 docker volume create jenkins_home
@@ -62,6 +62,12 @@ docker run -d --name jenkins \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/bin/docker:/usr/bin/docker \   # optional; allows Jenkins to call docker binary
   jenkins/jenkins:lts
+
+# Run an SSH-enabled Jenkins agent container:
+docker run -d --rm --name=agent1 --network jenkins -p 2222:22 -e JENKINS_AGENT_SSH_PUBKEY=[public-key] jenkins/ssh-agent:jdk21.
+
+Copy the agent's public SSH key to Jenkins.
+Go to "Manage Jenkins" → "Nodes" → "New Node" and set up this agent with the agent's SSH configuration.
 
 
 
