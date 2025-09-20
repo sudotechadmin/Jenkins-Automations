@@ -50,5 +50,18 @@ Create your first admin user?
 This is covered in the install docs and Docker notes.
 https://www.jenkins.io/doc/book/installing/
 
+4) # Run Jenkins with Docker socket and bind Docker CLI (host path may vary) allows Jenkins to call docker binary.
+
+# create persistent volume if not created
+docker volume create jenkins_home
+
+# Run Jenkins with docker socket and bind docker CLI
+docker run -d --name jenkins \
+  -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/bin/docker:/usr/bin/docker \   # optional; allows Jenkins to call docker binary
+  jenkins/jenkins:lts
+
 
 
